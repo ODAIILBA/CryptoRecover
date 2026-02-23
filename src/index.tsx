@@ -4,9 +4,11 @@ import { serveStatic } from 'hono/cloudflare-workers'
 import * as crypto from './lib/crypto'
 import * as bip39 from './lib/bip39'
 import * as walletGen from './lib/wallet-generator'
+import * as dbHelper from './lib/db-helper'
 
 type Bindings = {
   DB: D1Database
+  ENCRYPTION_KEY?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -195,8 +197,12 @@ app.post('/api/wallet/test', async (c) => {
 
 // Batch scan (generate and test multiple seed phrases)
 app.post('/api/wallet/batch-scan', async (c) => {
+  let scanId: number | null = null
+  
   try {
-    const { count = 10, wordCount = 12, walletType = 'both', useRealAPI = false, apiKey } = await c.req.json()
+    const { count = 10, wordCount = 12, walletType = 'both', useRealAPI = false, apiKey, userId = 1, saveToDb = true } = await c.req.json()
+    
+    console.log('[API] Batch scan started:', { count, wordCount, walletType, useRealAPI, saveToDb })
     
     if (count < 1 || count > 1000) {
       return c.json({ error: 'Count must be between 1 and 1000' }, 400)
@@ -211,12 +217,76 @@ app.post('/api/wallet/batch-scan', async (c) => {
       return c.json({ error: 'Real API mode limited to 100 wallets per batch' }, 400)
     }
     
+    // Get DB and encryption key
+    const db = c.env.DB
+    const encryptionKey = c.env.ENCRYPTION_KEY || 'default-dev-key-change-in-production'
+    
+    console.log('[API] DB available:', !!db)
+    
+    // Create scan record (if DB persistence enabled)
+    if (saveToDb && db) {
+      try {
+        console.log('[API] Creating scan record...')
+        scanId = await dbHelper.createScan(db, {
+          user_id: userId,
+          mode: 'batch_scan',
+          input_type: 'random_generation',
+          input_value: `Batch scan: ${count} wallets, ${wordCount} words, ${walletType}`,
+          wallet_type: walletType as any,
+          word_count: wordCount,
+          status: 'running',
+          total_attempts: 0,
+          success_count: 0,
+          scan_speed: 0,
+          use_real_api: useRealAPI
+        }, encryptionKey)
+        console.log('[API] Scan record created:', scanId)
+      } catch (dbError: any) {
+        console.error('[API] DB error (continuing without persistence):', dbError?.message || dbError)
+        scanId = null
+      }
+    }
+    
     const startTime = Date.now()
     const result = await walletGen.batchScan(count, wordCount, walletType, useRealAPI, apiKey)
     const stats = walletGen.calculateScanStats(startTime, result.totalScanned, result.totalFound)
     
+    console.log('[API] Scan completed:', { totalScanned: result.totalScanned, totalFound: result.totalFound })
+    
+    // Update scan with results (if DB persistence enabled)
+    if (saveToDb && db && scanId) {
+      try {
+        await dbHelper.updateScanProgress(db, scanId, {
+          status: 'completed',
+          total_attempts: result.totalScanned,
+          success_count: result.totalFound,
+          scan_speed: stats.scannedPerSecond,
+          completed_at: new Date().toISOString()
+        })
+        
+        console.log('[API] Scan progress updated')
+        
+        // Save found wallets
+        for (const wallet of result.foundWallets) {
+          await dbHelper.saveScanResult(db, {
+            scan_id: scanId,
+            wallet_address: wallet.address,
+            wallet_type: wallet.type,
+            balance: wallet.balance,
+            balance_usd: wallet.balanceUSD,
+            transaction_count: wallet.transactionCount,
+            encryption_iv: crypto.generateIV()
+          }, encryptionKey)
+        }
+        console.log('[API] Results saved to database')
+      } catch (dbError) {
+        console.error('[API] DB update error:', dbError)
+      }
+    }
+    
     return c.json({
       success: true,
+      scanId, // Return scan ID for history tracking
       totalScanned: result.totalScanned,
       totalFound: result.totalFound,
       foundWallets: result.foundWallets,
@@ -231,6 +301,91 @@ app.post('/api/wallet/batch-scan', async (c) => {
   } catch (error) {
     console.error('[API] Batch scan error:', error)
     return c.json({ error: 'Failed to perform batch scan' }, 500)
+  }
+})
+
+// Get scan history
+app.get('/api/scans/history', async (c) => {
+  try {
+    const { userId = '1', limit = '50', offset = '0' } = c.req.query()
+    const db = c.env.DB
+    
+    const history = await dbHelper.getScanHistory(
+      db,
+      parseInt(userId),
+      parseInt(limit),
+      parseInt(offset)
+    )
+    
+    return c.json({
+      success: true,
+      scans: history,
+      count: history.length
+    })
+  } catch (error) {
+    console.error('[API] Get history error:', error)
+    return c.json({ error: 'Failed to retrieve scan history' }, 500)
+  }
+})
+
+// Get scan statistics (MUST be before :scanId route)
+app.get('/api/scans/stats', async (c) => {
+  try {
+    const { userId = '1' } = c.req.query()
+    const db = c.env.DB
+    
+    const stats = await dbHelper.getScanStats(db, parseInt(userId))
+    
+    return c.json({
+      success: true,
+      stats
+    })
+  } catch (error) {
+    console.error('[API] Get stats error:', error)
+    return c.json({ error: 'Failed to retrieve scan statistics' }, 500)
+  }
+})
+
+// Get scan by ID
+app.get('/api/scans/:scanId', async (c) => {
+  try {
+    const scanId = parseInt(c.req.param('scanId'))
+    const db = c.env.DB
+    
+    const scan = await dbHelper.getScanById(db, scanId)
+    
+    if (!scan) {
+      return c.json({ error: 'Scan not found' }, 404)
+    }
+    
+    return c.json({
+      success: true,
+      scan
+    })
+  } catch (error) {
+    console.error('[API] Get scan error:', error)
+    return c.json({ error: 'Failed to retrieve scan' }, 500)
+  }
+})
+
+// Get scan results (found wallets)
+app.get('/api/scans/:scanId/results', async (c) => {
+  try {
+    const scanId = parseInt(c.req.param('scanId'))
+    const db = c.env.DB
+    const encryptionKey = c.env.ENCRYPTION_KEY || 'default-dev-key-change-in-production'
+    
+    const results = await dbHelper.getScanResults(db, scanId, encryptionKey)
+    
+    return c.json({
+      success: true,
+      scanId,
+      results,
+      count: results.length
+    })
+  } catch (error) {
+    console.error('[API] Get scan results error:', error)
+    return c.json({ error: 'Failed to retrieve scan results' }, 500)
   }
 })
 
