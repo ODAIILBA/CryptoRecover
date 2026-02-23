@@ -6,6 +6,7 @@ import * as bip39 from './lib/bip39'
 import * as walletGen from './lib/wallet-generator'
 import * as dbHelper from './lib/db-helper'
 import * as mlLearning from './lib/ml-learning'
+import { MLController } from './lib/ml-controller'
 
 type Bindings = {
   DB: D1Database
@@ -471,6 +472,217 @@ app.post('/api/ml/reset', async (c) => {
   } catch (error) {
     console.error('[API] Reset ML error:', error)
     return c.json({ error: 'Failed to reset ML state' }, 500)
+  }
+})
+
+// ===== ML CONTROLLER ENDPOINTS =====
+
+// Get ML configuration
+app.get('/api/ml/config', async (c) => {
+  try {
+    const db = c.env.DB
+    const controller = new MLController(db)
+    await controller.loadConfig()
+    const config = controller.getConfig()
+    
+    return c.json({
+      success: true,
+      config
+    })
+  } catch (error) {
+    console.error('[API] Get ML config error:', error)
+    return c.json({ error: 'Failed to retrieve ML configuration' }, 500)
+  }
+})
+
+// Update ML configuration
+app.post('/api/ml/config', async (c) => {
+  try {
+    const db = c.env.DB
+    const updates = await c.req.json()
+    
+    const controller = new MLController(db)
+    await controller.loadConfig()
+    await controller.saveConfig(updates)
+    
+    return c.json({
+      success: true,
+      message: 'ML configuration updated',
+      config: controller.getConfig()
+    })
+  } catch (error) {
+    console.error('[API] Update ML config error:', error)
+    return c.json({ error: 'Failed to update ML configuration' }, 500)
+  }
+})
+
+// Get ML performance metrics
+app.get('/api/ml/metrics', async (c) => {
+  try {
+    const db = c.env.DB
+    const controller = new MLController(db)
+    await controller.loadConfig()
+    const metrics = await controller.getMetrics()
+    
+    // Convert Map to array for JSON serialization
+    const strategyPerformance = Array.from(metrics.strategyPerformance.entries()).map(([strategy, stats]) => ({
+      strategy,
+      ...stats
+    }))
+    
+    return c.json({
+      success: true,
+      metrics: {
+        strategyPerformance,
+        recentAttempts: metrics.recentAttempts.slice(-20), // Last 20 attempts
+        bestStrategy: metrics.bestStrategy,
+        worstStrategy: metrics.worstStrategy,
+        improvementRate: metrics.improvementRate,
+        confidence: metrics.confidence
+      }
+    })
+  } catch (error) {
+    console.error('[API] Get ML metrics error:', error)
+    return c.json({ error: 'Failed to retrieve ML metrics' }, 500)
+  }
+})
+
+// Get ML health status
+app.get('/api/ml/health', async (c) => {
+  try {
+    const db = c.env.DB
+    const controller = new MLController(db)
+    await controller.loadConfig()
+    const health = await controller.getHealthStatus()
+    
+    return c.json({
+      success: true,
+      ...health
+    })
+  } catch (error) {
+    console.error('[API] Get ML health error:', error)
+    return c.json({ error: 'Failed to retrieve ML health status' }, 500)
+  }
+})
+
+// Set learning rate
+app.post('/api/ml/learning-rate', async (c) => {
+  try {
+    const db = c.env.DB
+    const { rate } = await c.req.json()
+    
+    if (typeof rate !== 'number' || rate < 0 || rate > 1) {
+      return c.json({ error: 'Learning rate must be a number between 0 and 1' }, 400)
+    }
+    
+    const controller = new MLController(db)
+    await controller.loadConfig()
+    await controller.setLearningRate(rate)
+    
+    return c.json({
+      success: true,
+      message: `Learning rate set to ${rate}`,
+      config: controller.getConfig()
+    })
+  } catch (error) {
+    console.error('[API] Set learning rate error:', error)
+    return c.json({ error: 'Failed to set learning rate' }, 500)
+  }
+})
+
+// Configure learning types
+app.post('/api/ml/configure-learning', async (c) => {
+  try {
+    const db = c.env.DB
+    const options = await c.req.json()
+    
+    const controller = new MLController(db)
+    await controller.loadConfig()
+    await controller.configureLearning(options)
+    
+    return c.json({
+      success: true,
+      message: 'Learning configuration updated',
+      config: controller.getConfig()
+    })
+  } catch (error) {
+    console.error('[API] Configure learning error:', error)
+    return c.json({ error: 'Failed to configure learning' }, 500)
+  }
+})
+
+// Set hybrid weights
+app.post('/api/ml/hybrid-weights', async (c) => {
+  try {
+    const db = c.env.DB
+    const weights = await c.req.json()
+    
+    const controller = new MLController(db)
+    await controller.loadConfig()
+    await controller.setHybridWeights(weights)
+    
+    return c.json({
+      success: true,
+      message: 'Hybrid weights updated',
+      config: controller.getConfig()
+    })
+  } catch (error: any) {
+    console.error('[API] Set hybrid weights error:', error)
+    return c.json({ error: error?.message || 'Failed to set hybrid weights' }, 500)
+  }
+})
+
+// Export ML state
+app.get('/api/ml/export', async (c) => {
+  try {
+    const db = c.env.DB
+    const controller = new MLController(db)
+    await controller.loadConfig()
+    const exportData = await controller.exportState()
+    
+    return c.json({
+      success: true,
+      export: exportData
+    })
+  } catch (error) {
+    console.error('[API] Export ML state error:', error)
+    return c.json({ error: 'Failed to export ML state' }, 500)
+  }
+})
+
+// Import ML state
+app.post('/api/ml/import', async (c) => {
+  try {
+    const db = c.env.DB
+    const importData = await c.req.json()
+    
+    const controller = new MLController(db)
+    await controller.importState(importData)
+    
+    return c.json({
+      success: true,
+      message: 'ML state imported successfully'
+    })
+  } catch (error) {
+    console.error('[API] Import ML state error:', error)
+    return c.json({ error: 'Failed to import ML state' }, 500)
+  }
+})
+
+// Reset all ML data
+app.post('/api/ml/reset-all', async (c) => {
+  try {
+    const db = c.env.DB
+    const controller = new MLController(db)
+    await controller.resetAll()
+    
+    return c.json({
+      success: true,
+      message: 'All ML data has been reset (state, config, metrics)'
+    })
+  } catch (error) {
+    console.error('[API] Reset all ML error:', error)
+    return c.json({ error: 'Failed to reset ML data' }, 500)
   }
 })
 
