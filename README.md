@@ -13,7 +13,7 @@ A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudfl
 
 - **✅ Automated Wallet Scanner** 🔥 NEW!
   - Generate random BIP39 seed phrases (12 or 24 words)
-  - Automatically derive wallet addresses (ETH & BTC)
+  - Automatically derive wallet addresses (ETH, BTC & SOL)
   - **Check balances using real blockchain APIs** 🚀 NEW!
   - Real-time progress tracking with statistics
   - Display found wallets with full details
@@ -23,7 +23,8 @@ A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudfl
 - **✅ Real Blockchain API Integration** 🚀 NEW!
   - **Etherscan API** for Ethereum wallet balance checking
   - **Blockchain.com API** for Bitcoin wallet balance checking
-  - **CoinGecko API** for real-time crypto prices
+  - **Solana RPC API** for Solana wallet balance checking ⚡ NEW!
+  - **CoinGecko API** for real-time crypto prices (ETH, BTC, SOL)
   - Rate limiting (5 req/sec) to respect API limits
   - Automatic retry logic with exponential backoff
   - Fallback to zero balance on API failures
@@ -39,6 +40,7 @@ A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudfl
 - **✅ Wallet Address Validation**
   - Ethereum (ETH) address format validation
   - Bitcoin (BTC) address format validation (P2PKH, P2SH, Bech32)
+  - Solana (SOL) address format validation (Base58, 32-44 chars)
 
 - **✅ Military-Grade Encryption**
   - AES-256-GCM encryption using Web Crypto API
@@ -225,6 +227,12 @@ npm run clean-port    # Kill process on port 3000
 - **No API key required!** ✅
 - Public API with rate limits
 - ~1-5 requests/second recommended
+
+### Solana RPC API (for Solana)
+- **No API key required!** ✅
+- Public mainnet RPC endpoint: `https://api.mainnet-beta.solana.com`
+- Rate limits vary by endpoint
+- Alternative: Use private RPC providers (Helius, QuickNode) for higher limits
 
 ### CoinGecko API (for crypto prices)
 - **No API key required!** ✅
