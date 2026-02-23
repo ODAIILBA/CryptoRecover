@@ -220,8 +220,8 @@ app.post('/api/wallet/batch-scan', async (c) => {
       count, wordCount, walletType, useRealAPI, saveToDb, useML, mlStrategy, useAdvancedML 
     })
     
-    if (count < 1 || count > 1000) {
-      return c.json({ error: 'Count must be between 1 and 1000' }, 400)
+    if (count < 1 || count > 100000) {
+      return c.json({ error: 'Count must be between 1 and 100,000' }, 400)
     }
     
     if (wordCount !== 12 && wordCount !== 24) {
@@ -229,8 +229,8 @@ app.post('/api/wallet/batch-scan', async (c) => {
     }
     
     // Limit real API calls to prevent abuse
-    if (useRealAPI && count > 100) {
-      return c.json({ error: 'Real API mode limited to 100 wallets per batch' }, 400)
+    if (useRealAPI && count > 100000) {
+      return c.json({ error: 'Real API mode limited to 100,000 wallets per batch' }, 400)
     }
     
     // Get DB and encryption key
@@ -1064,9 +1064,12 @@ app.get('/scanner', (c) => {
                                 id="scanCount" 
                                 value="100"
                                 min="1"
-                                max="1000"
+                                max="100000"
                                 class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-amber-500 focus:outline-none transition"
                             />
+                            <p class="text-xs text-slate-500 mt-1">
+                                Max: 100,000 wallets per scan (simulation mode)
+                            </p>
                         </div>
                         
                         <div>
@@ -1245,12 +1248,12 @@ app.get('/scanner', (c) => {
               apiStatus.className = 'text-xs px-2 py-1 rounded bg-green-500/20 text-green-400';
               modeDescription.textContent = 'Real API: Checks actual blockchain balances using Etherscan & Blockchain.com APIs';
               
-              // Limit count to 100 for real API
+              // Limit count to 100,000 for real API
               const countInput = document.getElementById('scanCount');
-              if (parseInt(countInput.value) > 100) {
-                countInput.value = '100';
+              if (parseInt(countInput.value) > 100000) {
+                countInput.value = '100000';
               }
-              countInput.max = '100';
+              countInput.max = '100000';
             } else {
               apiKeySection.classList.add('hidden');
               apiStatus.textContent = 'Simulation Mode';
@@ -1259,7 +1262,7 @@ app.get('/scanner', (c) => {
               
               // Restore max count
               const countInput = document.getElementById('scanCount');
-              countInput.max = '1000';
+              countInput.max = '100000';
             }
           });
 
@@ -1270,13 +1273,13 @@ app.get('/scanner', (c) => {
             const useRealAPI = useRealAPICheckbox.checked;
             const apiKey = document.getElementById('apiKey').value;
 
-            if (count < 1 || count > 1000) {
-              alert('Please enter a count between 1 and 1000');
+            if (count < 1 || count > 100000) {
+              alert('Please enter a count between 1 and 100,000');
               return;
             }
 
-            if (useRealAPI && count > 100) {
-              alert('Real API mode is limited to 100 wallets per batch');
+            if (useRealAPI && count > 100000) {
+              alert('Real API mode is limited to 100,000 wallets per batch');
               return;
             }
 
