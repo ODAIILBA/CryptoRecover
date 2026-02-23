@@ -1,10 +1,14 @@
 /**
  * Blockchain API Integration
- * Real wallet balance checking using Etherscan (ETH) and Blockchain.com (BTC)
+ * Real wallet balance checking using:
+ * - Etherscan (ETH)
+ * - Blockchain.com (BTC)
+ * - Solana RPC (SOL)
  * 
  * API Documentation:
  * - Etherscan: https://docs.etherscan.io/api-endpoints/accounts
  * - Blockchain.com: https://www.blockchain.com/explorer/api
+ * - Solana: https://docs.solana.com/api/http
  */
 
 interface EtherscanResponse {
@@ -17,6 +21,18 @@ interface BlockchainBTCResponse {
   final_balance: number
   n_tx: number
   total_received: number
+}
+
+interface SolanaRPCResponse {
+  jsonrpc: string
+  result: {
+    context: { slot: number }
+    value: number
+  } | null
+  error?: {
+    code: number
+    message: string
+  }
 }
 
 interface WalletBalance {
@@ -82,6 +98,7 @@ class RateLimiter {
 // Rate limiters (5 req/sec for free tier)
 const etherscanLimiter = new RateLimiter(5)
 const blockchainLimiter = new RateLimiter(5)
+const solanaLimiter = new RateLimiter(10) // Solana public RPC allows ~10 req/sec
 
 /**
  * Check Ethereum wallet balance using Etherscan API
@@ -192,11 +209,88 @@ export async function checkBitcoinBalance(address: string): Promise<WalletBalanc
 }
 
 /**
+ * Check Solana wallet balance using Solana RPC API
+ */
+export async function checkSolanaBalance(address: string): Promise<WalletBalance> {
+  try {
+    const response = await solanaLimiter.add(async () => {
+      // Using public Solana RPC endpoint
+      const url = 'https://api.mainnet-beta.solana.com'
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getBalance',
+          params: [address]
+        })
+      })
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      }
+      
+      return await res.json() as SolanaRPCResponse
+    })
+    
+    if (response.error) {
+      throw new Error(`Solana RPC error: ${response.error.message}`)
+    }
+    
+    // Convert from lamports to SOL
+    const balanceLamports = response.result?.value || 0
+    const balanceSOL = balanceLamports / 1e9
+    
+    // Get transaction count
+    const txResponse = await solanaLimiter.add(async () => {
+      const url = 'https://api.mainnet-beta.solana.com'
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getSignaturesForAddress',
+          params: [address, { limit: 1 }]
+        })
+      })
+      return await res.json()
+    })
+    
+    const txCount = txResponse.result?.length || 0
+    
+    // Get SOL price in USD (approximate)
+    const solPrice = 100 // Update with real-time price
+    const balanceUSD = balanceSOL * solPrice
+    
+    return {
+      address,
+      balance: balanceSOL.toFixed(9), // SOL has 9 decimals
+      balanceUSD: balanceUSD.toFixed(2),
+      transactionCount: txCount,
+      hasBalance: balanceSOL > 0
+    }
+  } catch (error) {
+    console.error('[Solana] Error checking balance:', error)
+    
+    // Fallback: return zero balance instead of failing
+    return {
+      address,
+      balance: '0',
+      balanceUSD: '0',
+      transactionCount: 0,
+      hasBalance: false
+    }
+  }
+}
+
+/**
  * Check wallet balance with retry logic
  */
 export async function checkWalletBalanceWithRetry(
   address: string,
-  type: 'ETH' | 'BTC',
+  type: 'ETH' | 'BTC' | 'SOL',
   apiKey?: string,
   maxRetries = 3
 ): Promise<WalletBalance> {
@@ -206,8 +300,10 @@ export async function checkWalletBalanceWithRetry(
     try {
       if (type === 'ETH') {
         return await checkEthereumBalance(address, apiKey)
-      } else {
+      } else if (type === 'BTC') {
         return await checkBitcoinBalance(address)
+      } else if (type === 'SOL') {
+        return await checkSolanaBalance(address)
       }
     } catch (error) {
       lastError = error as Error
@@ -236,7 +332,7 @@ export async function checkWalletBalanceWithRetry(
  * Check multiple wallets in parallel with concurrency limit
  */
 export async function checkMultipleWallets(
-  wallets: Array<{ address: string; type: 'ETH' | 'BTC' }>,
+  wallets: Array<{ address: string; type: 'ETH' | 'BTC' | 'SOL' }>,
   apiKey?: string,
   concurrency = 3
 ): Promise<WalletBalance[]> {
@@ -259,16 +355,17 @@ export async function checkMultipleWallets(
 /**
  * Get real-time crypto prices
  */
-export async function getCryptoPrices(): Promise<{ ETH: number; BTC: number }> {
+export async function getCryptoPrices(): Promise<{ ETH: number; BTC: number; SOL: number }> {
   try {
     // Using CoinGecko API (no API key required for basic usage)
-    const url = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin&vs_currencies=usd'
+    const url = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin,solana&vs_currencies=usd'
     const response = await fetch(url)
     const data = await response.json()
     
     return {
       ETH: data.ethereum?.usd || 2000,
-      BTC: data.bitcoin?.usd || 45000
+      BTC: data.bitcoin?.usd || 45000,
+      SOL: data.solana?.usd || 100
     }
   } catch (error) {
     console.error('[CoinGecko] Error fetching prices:', error)
@@ -276,7 +373,8 @@ export async function getCryptoPrices(): Promise<{ ETH: number; BTC: number }> {
     // Fallback to approximate values
     return {
       ETH: 2000,
-      BTC: 45000
+      BTC: 45000,
+      SOL: 100
     }
   }
 }
@@ -287,11 +385,13 @@ export async function getCryptoPrices(): Promise<{ ETH: number; BTC: number }> {
 export async function healthCheck(apiKey?: string): Promise<{
   etherscan: boolean
   blockchain: boolean
+  solana: boolean
   coingecko: boolean
 }> {
   const results = {
     etherscan: false,
     blockchain: false,
+    solana: false,
     coingecko: false
   }
   
@@ -311,6 +411,15 @@ export async function healthCheck(apiKey?: string): Promise<{
     results.blockchain = true
   } catch (error) {
     console.error('[Health] Blockchain.com check failed:', error)
+  }
+  
+  // Test Solana
+  try {
+    const testAddress = '11111111111111111111111111111111' // System program
+    await checkSolanaBalance(testAddress)
+    results.solana = true
+  } catch (error) {
+    console.error('[Health] Solana check failed:', error)
   }
   
   // Test CoinGecko

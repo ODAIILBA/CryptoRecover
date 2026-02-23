@@ -244,7 +244,7 @@ app.get('/api/blockchain/health', async (c) => {
     return c.json({
       success: true,
       services: health,
-      allHealthy: health.etherscan && health.blockchain && health.coingecko
+      allHealthy: health.etherscan && health.blockchain && health.coingecko && health.solana
     })
   } catch (error) {
     console.error('[API] Health check error:', error)
@@ -368,9 +368,11 @@ app.get('/scanner', (c) => {
                             id="walletType"
                             class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-amber-500 focus:outline-none transition"
                         >
-                            <option value="both" selected>Both (ETH & BTC)</option>
+                            <option value="all" selected>All (ETH, BTC & SOL)</option>
+                            <option value="both">ETH & BTC</option>
                             <option value="ETH">Ethereum Only</option>
                             <option value="BTC">Bitcoin Only</option>
+                            <option value="SOL">Solana Only</option>
                         </select>
                     </div>
 

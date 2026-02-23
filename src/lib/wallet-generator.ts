@@ -37,7 +37,7 @@ export function generateBatchSeedPhrases(count: number, wordCount: 12 | 24 = 12)
  * NOTE: In production, use proper BIP32/BIP44 derivation with crypto libraries
  * For Cloudflare Workers, we simulate since full crypto libs aren't available
  */
-export async function deriveWalletAddress(seedPhrase: string, type: 'ETH' | 'BTC'): Promise<string> {
+export async function deriveWalletAddress(seedPhrase: string, type: 'ETH' | 'BTC' | 'SOL'): Promise<string> {
   // Create a deterministic "address" from seed phrase hash
   const encoder = new TextEncoder()
   const data = encoder.encode(seedPhrase + type)
@@ -48,7 +48,7 @@ export async function deriveWalletAddress(seedPhrase: string, type: 'ETH' | 'BTC
   if (type === 'ETH') {
     // Ethereum address format: 0x + 40 hex chars
     return '0x' + hashHex.slice(0, 40)
-  } else {
+  } else if (type === 'BTC') {
     // Bitcoin address format: 1 + base58-like chars (simulated)
     // In production, use proper base58 encoding
     const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
@@ -58,7 +58,19 @@ export async function deriveWalletAddress(seedPhrase: string, type: 'ETH' | 'BTC
       address += base58Chars[index]
     }
     return address
+  } else if (type === 'SOL') {
+    // Solana address format: base58-encoded 32-byte public key
+    // Simulated base58 encoding (44 chars typical)
+    const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+    let address = ''
+    for (let i = 0; i < 44; i++) {
+      const index = parseInt(hashHex.slice(i * 2 % hashHex.length, (i * 2 + 2) % hashHex.length) || '00', 16) % base58Chars.length
+      address += base58Chars[index]
+    }
+    return address
   }
+  
+  return ''
 }
 
 /**
@@ -120,13 +132,13 @@ export async function checkWalletBalance(
  */
 export async function scanSeedPhrase(
   seedPhrase: string, 
-  walletType: 'ETH' | 'BTC' | 'both',
+  walletType: 'ETH' | 'BTC' | 'SOL' | 'both' | 'all',
   useRealAPI = false,
   apiKey?: string
 ): Promise<{
   seedPhrase: string
   results: Array<{
-    type: 'ETH' | 'BTC'
+    type: 'ETH' | 'BTC' | 'SOL'
     address: string
     balance: string
     balanceUSD: string
@@ -135,7 +147,7 @@ export async function scanSeedPhrase(
   }>
 }> {
   const results: Array<{
-    type: 'ETH' | 'BTC'
+    type: 'ETH' | 'BTC' | 'SOL'
     address: string
     balance: string
     balanceUSD: string
@@ -143,13 +155,20 @@ export async function scanSeedPhrase(
     hasBalance: boolean
   }> = []
   
-  const typesToCheck = walletType === 'both' ? ['ETH', 'BTC'] : [walletType]
+  let typesToCheck: string[] = []
+  if (walletType === 'all') {
+    typesToCheck = ['ETH', 'BTC', 'SOL']
+  } else if (walletType === 'both') {
+    typesToCheck = ['ETH', 'BTC']
+  } else {
+    typesToCheck = [walletType]
+  }
   
   for (const type of typesToCheck) {
-    const address = await deriveWalletAddress(seedPhrase, type as 'ETH' | 'BTC')
-    const balanceInfo = await checkWalletBalance(address, type as 'ETH' | 'BTC', useRealAPI, apiKey)
+    const address = await deriveWalletAddress(seedPhrase, type as 'ETH' | 'BTC' | 'SOL')
+    const balanceInfo = await checkWalletBalance(address, type as 'ETH' | 'BTC' | 'SOL', useRealAPI, apiKey)
     results.push({
-      type: type as 'ETH' | 'BTC',
+      type: type as 'ETH' | 'BTC' | 'SOL',
       ...balanceInfo
     })
   }
@@ -166,7 +185,7 @@ export async function scanSeedPhrase(
 export async function batchScan(
   count: number,
   wordCount: 12 | 24,
-  walletType: 'ETH' | 'BTC' | 'both',
+  walletType: 'ETH' | 'BTC' | 'SOL' | 'both' | 'all',
   useRealAPI = false,
   apiKey?: string,
   onProgress?: (current: number, total: number, found: number) => void
@@ -175,7 +194,7 @@ export async function batchScan(
   totalFound: number
   foundWallets: Array<{
     seedPhrase: string
-    type: 'ETH' | 'BTC'
+    type: 'ETH' | 'BTC' | 'SOL'
     address: string
     balance: string
     balanceUSD: string
@@ -185,7 +204,7 @@ export async function batchScan(
 }> {
   const foundWallets: Array<{
     seedPhrase: string
-    type: 'ETH' | 'BTC'
+    type: 'ETH' | 'BTC' | 'SOL'
     address: string
     balance: string
     balanceUSD: string
