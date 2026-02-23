@@ -1,14 +1,23 @@
 # CryptoRecover - Wallet Recovery Tool
 
-A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudflare Pages. Features AI-powered BIP39 seed phrase analysis to help recover wallets with incomplete or corrupted seed phrases.
+A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudflare Pages. Features AI-powered BIP39 seed phrase analysis and **automated wallet generation & testing** to help recover wallets with incomplete or corrupted seed phrases.
 
 ## 🚀 Live Demo
 
 **Development Server:** https://3000-i6g74z013tsqkfiuv7yzs-82b888ba.sandbox.novita.ai
+**Scanner Page:** https://3000-i6g74z013tsqkfiuv7yzs-82b888ba.sandbox.novita.ai/scanner
 
 ## ✨ Features
 
 ### Currently Implemented
+
+- **✅ Automated Wallet Scanner** 🔥 NEW!
+  - Generate random BIP39 seed phrases (12 or 24 words)
+  - Automatically derive wallet addresses (ETH & BTC)
+  - Check balances using blockchain APIs (simulated)
+  - Real-time progress tracking with statistics
+  - Display found wallets with full details
+  - Batch scanning up to 1000 wallets
 
 - **✅ BIP39 Seed Phrase Analysis**
   - Validate seed phrases (12 or 24 words)
@@ -40,6 +49,9 @@ A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudfl
   - `POST /api/seed-phrase/analyze` - Analyze seed phrase for errors
   - `GET /api/seed-phrase/suggestions` - Get word autocomplete suggestions
   - `POST /api/seed-phrase/validate` - Validate complete seed phrase
+  - `POST /api/wallet/generate` - Generate random seed phrases 🔥 NEW!
+  - `POST /api/wallet/test` - Test a single seed phrase 🔥 NEW!
+  - `POST /api/wallet/batch-scan` - Batch scan multiple wallets 🔥 NEW!
   - `POST /api/scan/initiate` - Initiate wallet scan (demo mode)
   - `GET /api/scan/:scanId/status` - Get scan progress (demo mode)
 
@@ -273,6 +285,109 @@ Response:
   "wordCount": 12,
   "invalidWords": [],
   "message": "Valid BIP39 seed phrase"
+}
+```
+
+### Generate Random Seed Phrases 🔥 NEW!
+
+**POST** `/api/wallet/generate`
+```json
+{
+  "count": 3,
+  "wordCount": 12
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "count": 3,
+  "seedPhrases": [
+    "abandon ability able about...",
+    "address announce behind...",
+    "brown annual cabin..."
+  ],
+  "wordCount": 12
+}
+```
+
+### Test Single Seed Phrase 🔥 NEW!
+
+**POST** `/api/wallet/test`
+```json
+{
+  "seedPhrase": "abandon ability able about above absent absorb abstract absurd abuse access accident",
+  "walletType": "both"
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "seedPhrase": "abandon ability able...",
+  "results": [
+    {
+      "type": "ETH",
+      "address": "0x...",
+      "balance": "0",
+      "balanceUSD": "0",
+      "transactionCount": 0,
+      "hasBalance": false
+    },
+    {
+      "type": "BTC",
+      "address": "1...",
+      "balance": "0",
+      "balanceUSD": "0",
+      "transactionCount": 0,
+      "hasBalance": false
+    }
+  ]
+}
+```
+
+### Batch Scan Wallets 🔥 NEW!
+
+**POST** `/api/wallet/batch-scan`
+```json
+{
+  "count": 100,
+  "wordCount": 12,
+  "walletType": "both"
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "totalScanned": 100,
+  "totalFound": 0,
+  "foundWallets": [],
+  "scannedAt": "2026-02-23T05:32:10.596Z",
+  "stats": {
+    "scannedPerSecond": 50.25,
+    "elapsedTime": 1.99,
+    "successRate": 0
+  }
+}
+```
+
+If wallets with balance are found:
+```json
+{
+  "foundWallets": [
+    {
+      "seedPhrase": "abandon ability able...",
+      "type": "ETH",
+      "address": "0x...",
+      "balance": "0.05234567",
+      "balanceUSD": "104.69",
+      "transactionCount": 5
+    }
+  ]
 }
 ```
 
