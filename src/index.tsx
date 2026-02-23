@@ -173,18 +173,19 @@ app.post('/api/wallet/generate', async (c) => {
 // Test a single seed phrase (derive addresses and check balances)
 app.post('/api/wallet/test', async (c) => {
   try {
-    const { seedPhrase, walletType = 'both' } = await c.req.json()
+    const { seedPhrase, walletType = 'both', useRealAPI = false, apiKey } = await c.req.json()
     
     if (!seedPhrase) {
       return c.json({ error: 'Seed phrase is required' }, 400)
     }
     
-    const result = await walletGen.scanSeedPhrase(seedPhrase, walletType)
+    const result = await walletGen.scanSeedPhrase(seedPhrase, walletType, useRealAPI, apiKey)
     
     return c.json({
       success: true,
       seedPhrase: result.seedPhrase,
-      results: result.results
+      results: result.results,
+      mode: useRealAPI ? 'real' : 'simulation'
     })
   } catch (error) {
     console.error('[API] Test error:', error)
@@ -195,7 +196,7 @@ app.post('/api/wallet/test', async (c) => {
 // Batch scan (generate and test multiple seed phrases)
 app.post('/api/wallet/batch-scan', async (c) => {
   try {
-    const { count = 10, wordCount = 12, walletType = 'both' } = await c.req.json()
+    const { count = 10, wordCount = 12, walletType = 'both', useRealAPI = false, apiKey } = await c.req.json()
     
     if (count < 1 || count > 1000) {
       return c.json({ error: 'Count must be between 1 and 1000' }, 400)
@@ -205,8 +206,13 @@ app.post('/api/wallet/batch-scan', async (c) => {
       return c.json({ error: 'Word count must be 12 or 24' }, 400)
     }
     
+    // Limit real API calls to prevent abuse
+    if (useRealAPI && count > 100) {
+      return c.json({ error: 'Real API mode limited to 100 wallets per batch' }, 400)
+    }
+    
     const startTime = Date.now()
-    const result = await walletGen.batchScan(count, wordCount, walletType)
+    const result = await walletGen.batchScan(count, wordCount, walletType, useRealAPI, apiKey)
     const stats = walletGen.calculateScanStats(startTime, result.totalScanned, result.totalFound)
     
     return c.json({
@@ -215,6 +221,7 @@ app.post('/api/wallet/batch-scan', async (c) => {
       totalFound: result.totalFound,
       foundWallets: result.foundWallets,
       scannedAt: result.scannedAt,
+      mode: useRealAPI ? 'real' : 'simulation',
       stats: {
         scannedPerSecond: stats.scannedPerSecond,
         elapsedTime: stats.elapsedTime,
@@ -224,6 +231,41 @@ app.post('/api/wallet/batch-scan', async (c) => {
   } catch (error) {
     console.error('[API] Batch scan error:', error)
     return c.json({ error: 'Failed to perform batch scan' }, 500)
+  }
+})
+
+// Health check for blockchain APIs
+app.get('/api/blockchain/health', async (c) => {
+  try {
+    const { apiKey } = c.req.query()
+    const { healthCheck } = await import('./lib/blockchain-api')
+    const health = await healthCheck(apiKey)
+    
+    return c.json({
+      success: true,
+      services: health,
+      allHealthy: health.etherscan && health.blockchain && health.coingecko
+    })
+  } catch (error) {
+    console.error('[API] Health check error:', error)
+    return c.json({ error: 'Failed to perform health check' }, 500)
+  }
+})
+
+// Get current crypto prices
+app.get('/api/blockchain/prices', async (c) => {
+  try {
+    const { getCryptoPrices } = await import('./lib/blockchain-api')
+    const prices = await getCryptoPrices()
+    
+    return c.json({
+      success: true,
+      prices,
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error('[API] Prices error:', error)
+    return c.json({ error: 'Failed to fetch prices' }, 500)
   }
 })
 
@@ -331,6 +373,47 @@ app.get('/scanner', (c) => {
                             <option value="BTC">Bitcoin Only</option>
                         </select>
                     </div>
+
+                    <!-- Real API Mode Toggle -->
+                    <div class="mb-6 p-4 bg-slate-800 rounded-lg border border-slate-700">
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    id="useRealAPI"
+                                    class="w-5 h-5 rounded bg-slate-700 border-slate-600 text-amber-500 focus:ring-amber-500"
+                                />
+                                <span class="text-sm font-medium text-slate-300">
+                                    Use Real Blockchain APIs 🔥
+                                </span>
+                            </label>
+                            <span id="apiStatus" class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-400">
+                                Simulation Mode
+                            </span>
+                        </div>
+                        
+                        <div id="apiKeySection" class="hidden">
+                            <label class="block text-xs text-slate-400 mb-2">
+                                Etherscan API Key (Optional - required for ETH)
+                            </label>
+                            <input 
+                                type="password" 
+                                id="apiKey" 
+                                placeholder="Enter your Etherscan API key"
+                                class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
+                            />
+                            <p class="text-xs text-slate-500 mt-1">
+                                Get your free API key at <a href="https://etherscan.io/apis" target="_blank" class="text-amber-500 hover:underline">etherscan.io/apis</a>
+                            </p>
+                        </div>
+                        
+                        <div class="mt-3 text-xs text-slate-400">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            <span id="modeDescription">
+                                Simulation: Fast testing with random results (for demo)
+                            </span>
+                        </div>
+                    </div>
                     
                     <button 
                         id="startScan"
@@ -424,15 +507,57 @@ app.get('/scanner', (c) => {
           const progressDiv = document.getElementById('scanProgress');
           const foundDiv = document.getElementById('foundWallets');
           const summaryDiv = document.getElementById('resultsSummary');
+          const useRealAPICheckbox = document.getElementById('useRealAPI');
+          const apiKeySection = document.getElementById('apiKeySection');
+          const apiStatus = document.getElementById('apiStatus');
+          const modeDescription = document.getElementById('modeDescription');
+
+          // Toggle API key input visibility
+          useRealAPICheckbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+              apiKeySection.classList.remove('hidden');
+              apiStatus.textContent = 'Real API Mode';
+              apiStatus.className = 'text-xs px-2 py-1 rounded bg-green-500/20 text-green-400';
+              modeDescription.textContent = 'Real API: Checks actual blockchain balances using Etherscan & Blockchain.com APIs';
+              
+              // Limit count to 100 for real API
+              const countInput = document.getElementById('scanCount');
+              if (parseInt(countInput.value) > 100) {
+                countInput.value = '100';
+              }
+              countInput.max = '100';
+            } else {
+              apiKeySection.classList.add('hidden');
+              apiStatus.textContent = 'Simulation Mode';
+              apiStatus.className = 'text-xs px-2 py-1 rounded bg-slate-700 text-slate-400';
+              modeDescription.textContent = 'Simulation: Fast testing with random results (for demo)';
+              
+              // Restore max count
+              const countInput = document.getElementById('scanCount');
+              countInput.max = '1000';
+            }
+          });
 
           startBtn.addEventListener('click', async () => {
             const count = parseInt(document.getElementById('scanCount').value);
             const wordCount = parseInt(document.getElementById('wordCount').value);
             const walletType = document.getElementById('walletType').value;
+            const useRealAPI = useRealAPICheckbox.checked;
+            const apiKey = document.getElementById('apiKey').value;
 
             if (count < 1 || count > 1000) {
               alert('Please enter a count between 1 and 1000');
               return;
+            }
+
+            if (useRealAPI && count > 100) {
+              alert('Real API mode is limited to 100 wallets per batch');
+              return;
+            }
+
+            if (useRealAPI && !apiKey && walletType !== 'BTC') {
+              const proceed = confirm('No API key provided. ETH balance checks may fail or be rate-limited. Continue anyway?');
+              if (!proceed) return;
             }
 
             isScanning = true;
@@ -451,11 +576,18 @@ app.get('/scanner', (c) => {
             document.getElementById('scanStatus').className = 'text-green-500 font-semibold';
 
             try {
-              const response = await axios.post('/api/wallet/batch-scan', {
+              const requestBody = {
                 count,
                 wordCount,
-                walletType
-              });
+                walletType,
+                useRealAPI
+              };
+
+              if (useRealAPI && apiKey) {
+                requestBody.apiKey = apiKey;
+              }
+
+              const response = await axios.post('/api/wallet/batch-scan', requestBody);
 
               totalScanned = response.data.totalScanned;
               totalFound = response.data.totalFound;
@@ -536,7 +668,16 @@ app.get('/scanner', (c) => {
           function showSummary(data) {
             summaryDiv.classList.remove('hidden');
             const content = document.getElementById('summaryContent');
+            
+            const modeText = data.mode === 'real' 
+              ? '<span class="text-green-400">Real Blockchain APIs</span>' 
+              : '<span class="text-slate-400">Simulation Mode</span>';
+            
             content.innerHTML = \`
+              <div class="mb-4 p-3 bg-slate-800 rounded-lg">
+                <span class="text-slate-400 text-sm">Scan Mode:</span>
+                <span class="ml-2 font-semibold">\${modeText}</span>
+              </div>
               <div class="grid md:grid-cols-2 gap-6">
                 <div class="space-y-4">
                   <div class="bg-slate-800 rounded-lg p-4">
@@ -562,8 +703,9 @@ app.get('/scanner', (c) => {
               <div class="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
                 <p class="text-sm text-slate-300">
                   <i class="fas fa-info-circle text-amber-500 mr-2"></i>
-                  <strong>Note:</strong> This is a simulation for educational purposes. 
-                  In production, this would connect to real blockchain APIs to check actual wallet balances.
+                  <strong>Note:</strong> \${data.mode === 'real' 
+                    ? 'Real blockchain API mode checks actual wallet balances on Ethereum and Bitcoin networks.' 
+                    : 'This is a simulation for educational purposes. In production, this would connect to real blockchain APIs to check actual wallet balances.'}
                 </p>
               </div>
             \`;
