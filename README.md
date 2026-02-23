@@ -47,6 +47,18 @@ A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudfl
   - Secure key derivation and IV generation
   - All sensitive data encrypted at rest
 
+- **✅ Machine Learning System** 🧠 NEW!
+  - **Self-improving AI** that learns from successful wallet recoveries
+  - **Pattern recognition** for word frequency, positions, and correlations
+  - **6 generation strategies:** random, frequency, positional, correlated, hybrid, adaptive
+  - **Manual training interface** - submit known seed phrases to improve the system
+  - **Advanced ML control panel** with configuration and monitoring
+  - **Performance tracking** with metrics, health checks, and improvement rates
+  - **Database persistence** for learned patterns and training history
+  - **Export/Import** ML state for backup and transfer
+  - Adaptive strategy selection based on success data
+  - Real-time stats dashboard showing learning progress
+
 - **✅ Beautiful Modern UI**
   - Dark theme with amber accents
   - Fully responsive design (mobile, tablet, desktop)
@@ -65,10 +77,32 @@ A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudfl
   - `POST /api/wallet/generate` - Generate random seed phrases
   - `POST /api/wallet/test` - Test a single seed phrase (supports real API)
   - `POST /api/wallet/batch-scan` - Batch scan multiple wallets (supports real API)
-  - `GET /api/blockchain/health` - Check blockchain API health 🚀 NEW!
-  - `GET /api/blockchain/prices` - Get real-time crypto prices 🚀 NEW!
+  - `GET /api/blockchain/health` - Check blockchain API health 🚀
+  - `GET /api/blockchain/prices` - Get real-time crypto prices 🚀
   - `POST /api/scan/initiate` - Initiate wallet scan (demo mode)
   - `GET /api/scan/:scanId/status` - Get scan progress (demo mode)
+
+- **✅ ML Training API Endpoints** 🧠 NEW!
+  - `POST /api/ml/train` - Submit training data (seed phrases)
+  - `GET /api/ml/training-history` - View training submissions
+  - `GET /api/ml/stats` - Get ML performance statistics
+  - `GET /api/ml/health` - Check ML system health
+  - `GET /api/ml/metrics` - Detailed performance metrics
+  - `GET /api/ml/config` - Get ML configuration
+  - `POST /api/ml/config` - Update ML configuration
+  - `POST /api/ml/learning-rate` - Set learning rate
+  - `POST /api/ml/configure-learning` - Enable/disable learning types
+  - `POST /api/ml/hybrid-weights` - Adjust hybrid strategy weights
+  - `GET /api/ml/export` - Export ML state backup
+  - `POST /api/ml/import` - Import ML state from backup
+  - `POST /api/ml/reset` - Reset ML learning data
+  - `POST /api/ml/reset-all` - Full ML system reset
+
+- **✅ Scan History API Endpoints** 📊 NEW!
+  - `GET /api/scans/history` - Get scan history with filters
+  - `GET /api/scans/:scanId` - Get specific scan details
+  - `GET /api/scans/:scanId/results` - Get scan wallet results
+  - `GET /api/scans/stats` - Get user scan statistics
 
 ### Not Yet Implemented
 

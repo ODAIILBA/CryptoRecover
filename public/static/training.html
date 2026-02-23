@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Training - CryptoRecover</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white">
+    <!-- Navigation -->
+    <nav class="bg-slate-800 border-b border-slate-700 p-4">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <h1 class="text-2xl font-bold gradient-bg bg-clip-text text-transparent">
+                    <i class="fas fa-brain"></i> CryptoRecover ML
+                </h1>
+            </div>
+            <div class="flex space-x-4">
+                <a href="/" class="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition">
+                    <i class="fas fa-home mr-2"></i>Home
+                </a>
+                <a href="/scanner" class="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition">
+                    <i class="fas fa-search mr-2"></i>Scanner
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto p-6">
+        <!-- Header -->
+        <div class="mb-8 fade-in">
+            <h2 class="text-4xl font-bold mb-2">
+                <i class="fas fa-graduation-cap mr-2"></i>
+                ML Training Center
+            </h2>
+            <p class="text-slate-400">
+                Help improve the ML system by providing training data. Submit seed phrases you know to teach the system patterns.
+            </p>
+        </div>
+
+        <!-- Warning Notice -->
+        <div class="bg-amber-900/20 border border-amber-500 rounded-lg p-4 mb-6 fade-in">
+            <div class="flex items-start">
+                <i class="fas fa-exclamation-triangle text-amber-500 text-xl mr-3 mt-1"></i>
+                <div>
+                    <h3 class="font-bold text-amber-500 mb-1">Privacy & Security Warning</h3>
+                    <p class="text-sm text-amber-200">
+                        Only submit seed phrases from:
+                        <br>• Empty test wallets with no funds
+                        <br>• Your own wallets you want to help train the system
+                        <br>• Never submit phrases with real funds - all data is stored in database
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Training Form -->
+            <div class="lg:col-span-2">
+                <div class="bg-slate-800 rounded-lg p-6 border border-slate-700 fade-in">
+                    <h3 class="text-xl font-bold mb-4">
+                        <i class="fas fa-edit mr-2"></i>
+                        Submit Training Data
+                    </h3>
+
+                    <!-- Seed Phrase Input -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-300 mb-2">
+                            Seed Phrase (12 or 24 words)
+                        </label>
+                        <textarea 
+                            id="seedPhrase"
+                            rows="3"
+                            placeholder="Enter seed phrase separated by spaces..."
+                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-amber-500 focus:outline-none transition font-mono"
+                        ></textarea>
+                        <div class="mt-2 text-sm">
+                            <span class="text-slate-400">Word count: </span>
+                            <span id="wordCount" class="text-amber-500 font-bold">0</span>
+                        </div>
+                    </div>
+
+                    <!-- Wallet Type -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-300 mb-2">
+                            Wallet Type
+                        </label>
+                        <select 
+                            id="walletType"
+                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-amber-500 focus:outline-none transition"
+                        >
+                            <option value="ETH">Ethereum (ETH)</option>
+                            <option value="BTC">Bitcoin (BTC)</option>
+                            <option value="SOL">Solana (SOL)</option>
+                            <option value="unknown">Unknown/Multiple</option>
+                        </select>
+                    </div>
+
+                    <!-- Balance Info (Optional) -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-300 mb-2">
+                            Has Balance? (Optional)
+                        </label>
+                        <div class="flex space-x-4">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="hasBalance" value="yes" class="mr-2">
+                                <span>Yes (had funds)</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="hasBalance" value="no" class="mr-2" checked>
+                                <span>No (empty)</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="hasBalance" value="unknown" class="mr-2">
+                                <span>Unknown</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Balance Amount (if has balance) -->
+                    <div id="balanceAmountDiv" class="mb-4 hidden">
+                        <label class="block text-sm font-medium text-slate-300 mb-2">
+                            Approximate Balance (USD)
+                        </label>
+                        <input 
+                            type="number" 
+                            id="balanceAmount"
+                            placeholder="0.00"
+                            step="0.01"
+                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-amber-500 focus:outline-none transition"
+                        />
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-300 mb-2">
+                            Notes (Optional)
+                        </label>
+                        <textarea 
+                            id="notes"
+                            rows="2"
+                            placeholder="Any additional information about this phrase..."
+                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-amber-500 focus:outline-none transition"
+                        ></textarea>
+                    </div>
+
+                    <!-- Validation Results -->
+                    <div id="validationResults" class="mb-4 hidden">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex space-x-4">
+                        <button 
+                            id="validateBtn"
+                            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition"
+                        >
+                            <i class="fas fa-check-circle mr-2"></i>
+                            Validate Phrase
+                        </button>
+                        <button 
+                            id="submitBtn"
+                            class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition"
+                            disabled
+                        >
+                            <i class="fas fa-paper-plane mr-2"></i>
+                            Submit Training Data
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recent Submissions -->
+                <div class="bg-slate-800 rounded-lg p-6 border border-slate-700 mt-6 fade-in">
+                    <h3 class="text-xl font-bold mb-4">
+                        <i class="fas fa-history mr-2"></i>
+                        Recent Training Submissions
+                    </h3>
+                    <div id="recentSubmissions" class="space-y-2">
+                        <p class="text-slate-400 text-sm">No submissions yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ML Stats Sidebar -->
+            <div class="lg:col-span-1">
+                <!-- Current ML Stats -->
+                <div class="bg-slate-800 rounded-lg p-6 border border-slate-700 mb-6 fade-in">
+                    <h3 class="text-xl font-bold mb-4">
+                        <i class="fas fa-chart-line mr-2"></i>
+                        ML Statistics
+                    </h3>
+                    <div id="mlStats" class="space-y-4">
+                        <div class="flex justify-between items-center p-3 bg-slate-900 rounded">
+                            <span class="text-slate-400">Total Learned</span>
+                            <span id="totalLearned" class="text-amber-500 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between items-center p-3 bg-slate-900 rounded">
+                            <span class="text-slate-400">Success Rate</span>
+                            <span id="successRate" class="text-green-500 font-bold">0%</span>
+                        </div>
+                        <div class="flex justify-between items-center p-3 bg-slate-900 rounded">
+                            <span class="text-slate-400">Training Samples</span>
+                            <span id="trainingSamples" class="text-blue-500 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between items-center p-3 bg-slate-900 rounded">
+                            <span class="text-slate-400">Data Quality</span>
+                            <span id="dataQuality" class="text-purple-500 font-bold">0%</span>
+                        </div>
+                    </div>
+                    <button 
+                        id="refreshStatsBtn"
+                        class="w-full mt-4 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg transition"
+                    >
+                        <i class="fas fa-sync-alt mr-2"></i>
+                        Refresh Stats
+                    </button>
+                </div>
+
+                <!-- ML Health -->
+                <div class="bg-slate-800 rounded-lg p-6 border border-slate-700 fade-in">
+                    <h3 class="text-xl font-bold mb-4">
+                        <i class="fas fa-heartbeat mr-2"></i>
+                        System Health
+                    </h3>
+                    <div id="mlHealth">
+                        <div class="flex items-center justify-center py-8">
+                            <i class="fas fa-spinner fa-spin text-4xl text-slate-600"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let isValidated = false;
+        let validationData = null;
+
+        // Elements
+        const seedPhraseInput = document.getElementById('seedPhrase');
+        const wordCountSpan = document.getElementById('wordCount');
+        const validateBtn = document.getElementById('validateBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const validationResults = document.getElementById('validationResults');
+        const balanceRadios = document.querySelectorAll('input[name="hasBalance"]');
+        const balanceAmountDiv = document.getElementById('balanceAmountDiv');
+
+        // Update word count
+        seedPhraseInput.addEventListener('input', (e) => {
+            const words = e.target.value.trim().split(/\s+/).filter(w => w.length > 0);
+            wordCountSpan.textContent = words.length;
+            wordCountSpan.className = words.length === 12 || words.length === 24 
+                ? 'text-green-500 font-bold' 
+                : 'text-amber-500 font-bold';
+            isValidated = false;
+            submitBtn.disabled = true;
+            validationResults.classList.add('hidden');
+        });
+
+        // Show/hide balance amount
+        balanceRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'yes') {
+                    balanceAmountDiv.classList.remove('hidden');
+                } else {
+                    balanceAmountDiv.classList.add('hidden');
+                }
+            });
+        });
+
+        // Validate seed phrase
+        validateBtn.addEventListener('click', async () => {
+            const seedPhrase = seedPhraseInput.value.trim();
+            
+            if (!seedPhrase) {
+                showError('Please enter a seed phrase');
+                return;
+            }
+
+            validateBtn.disabled = true;
+            validateBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Validating...';
+
+            try {
+                const response = await fetch('/api/seed-phrase/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phrase: seedPhrase })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showValidationResults(data.analysis);
+                    isValidated = true;
+                    validationData = data.analysis;
+                    submitBtn.disabled = false;
+                } else {
+                    showError('Validation failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            } finally {
+                validateBtn.disabled = false;
+                validateBtn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Validate Phrase';
+            }
+        });
+
+        // Submit training data
+        submitBtn.addEventListener('click', async () => {
+            if (!isValidated) {
+                showError('Please validate the phrase first');
+                return;
+            }
+
+            const seedPhrase = seedPhraseInput.value.trim();
+            const walletType = document.getElementById('walletType').value;
+            const hasBalance = document.querySelector('input[name="hasBalance"]:checked').value;
+            const balanceAmount = document.getElementById('balanceAmount').value || '0';
+            const notes = document.getElementById('notes').value.trim();
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+
+            try {
+                const response = await fetch('/api/ml/train', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        seedPhrase,
+                        walletType,
+                        hasBalance: hasBalance === 'yes',
+                        balanceUSD: parseFloat(balanceAmount),
+                        notes,
+                        validationData
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showSuccess('Training data submitted successfully!');
+                    // Reset form
+                    seedPhraseInput.value = '';
+                    document.getElementById('notes').value = '';
+                    wordCountSpan.textContent = '0';
+                    isValidated = false;
+                    submitBtn.disabled = true;
+                    validationResults.classList.add('hidden');
+                    // Refresh stats
+                    loadMLStats();
+                    loadRecentSubmissions();
+                } else {
+                    showError('Submission failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Training Data';
+            }
+        });
+
+        // Show validation results
+        function showValidationResults(analysis) {
+            const validWords = analysis.validWords || [];
+            const invalidWords = analysis.invalidWords || [];
+            const totalWords = analysis.totalWords || 0;
+
+            validationResults.innerHTML = `
+                <div class="bg-slate-900 border border-slate-700 rounded-lg p-4">
+                    <h4 class="font-bold mb-2">Validation Results:</h4>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Total Words:</span>
+                            <span class="font-bold">${totalWords}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Valid Words:</span>
+                            <span class="text-green-500 font-bold">${validWords.length}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Invalid Words:</span>
+                            <span class="text-red-500 font-bold">${invalidWords.length}</span>
+                        </div>
+                        ${invalidWords.length > 0 ? `
+                            <div class="mt-2 p-2 bg-red-900/20 border border-red-500 rounded">
+                                <span class="text-red-500 text-sm">Invalid: ${invalidWords.join(', ')}</span>
+                            </div>
+                        ` : '<div class="text-green-500 text-sm">✓ All words are valid BIP39 words</div>'}
+                    </div>
+                </div>
+            `;
+            validationResults.classList.remove('hidden');
+        }
+
+        // Load ML stats
+        async function loadMLStats() {
+            try {
+                const [statsRes, healthRes] = await Promise.all([
+                    fetch('/api/ml/stats'),
+                    fetch('/api/ml/health')
+                ]);
+
+                const stats = await statsRes.json();
+                const health = await healthRes.json();
+
+                if (stats.success) {
+                    document.getElementById('totalLearned').textContent = stats.ml.learnedWords || 0;
+                    document.getElementById('successRate').textContent = 
+                        (stats.ml.successRate || 0).toFixed(4) + '%';
+                    document.getElementById('trainingSamples').textContent = 
+                        stats.ml.totalSuccesses || 0;
+                }
+
+                if (health.success) {
+                    const quality = (health.stats.dataQuality * 100).toFixed(1);
+                    document.getElementById('dataQuality').textContent = quality + '%';
+                    
+                    // Update health display
+                    displayHealth(health);
+                }
+            } catch (error) {
+                console.error('Failed to load ML stats:', error);
+            }
+        }
+
+        // Display health
+        function displayHealth(health) {
+            const healthDiv = document.getElementById('mlHealth');
+            const statusColor = health.healthy ? 'green' : 'amber';
+            const statusIcon = health.healthy ? 'check-circle' : 'exclamation-triangle';
+
+            healthDiv.innerHTML = `
+                <div class="flex items-center mb-3">
+                    <i class="fas fa-${statusIcon} text-${statusColor}-500 text-2xl mr-2"></i>
+                    <span class="font-bold text-${statusColor}-500">
+                        ${health.healthy ? 'Healthy' : 'Needs Attention'}
+                    </span>
+                </div>
+                ${health.recommendations.length > 0 ? `
+                    <div class="text-sm space-y-1">
+                        ${health.recommendations.map(rec => `
+                            <div class="flex items-start">
+                                <i class="fas fa-lightbulb text-amber-500 mr-2 mt-1"></i>
+                                <span class="text-slate-300">${rec}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        // Load recent submissions
+        async function loadRecentSubmissions() {
+            try {
+                const response = await fetch('/api/ml/training-history?limit=5');
+                const data = await response.json();
+
+                if (data.success && data.submissions.length > 0) {
+                    const div = document.getElementById('recentSubmissions');
+                    div.innerHTML = data.submissions.map(sub => `
+                        <div class="bg-slate-900 rounded p-3 border border-slate-700">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-sm font-mono">${sub.wordCount} words</span>
+                                <span class="text-xs text-slate-400">${new Date(sub.submittedAt).toLocaleString()}</span>
+                            </div>
+                            <div class="text-xs text-slate-400">
+                                ${sub.walletType} • ${sub.hasBalance ? 'Had balance' : 'Empty'}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load submissions:', error);
+            }
+        }
+
+        // Refresh stats button
+        document.getElementById('refreshStatsBtn').addEventListener('click', loadMLStats);
+
+        // Show error
+        function showError(message) {
+            alert('Error: ' + message);
+        }
+
+        // Show success
+        function showSuccess(message) {
+            alert('Success: ' + message);
+        }
+
+        // Load initial data
+        loadMLStats();
+        loadRecentSubmissions();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadMLStats, 30000);
+    </script>
+</body>
+</html>
