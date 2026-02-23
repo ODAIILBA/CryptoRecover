@@ -6,6 +6,7 @@
 
 import { BIP39_WORDLIST } from './bip39'
 import type { MLState, GenerationStrategy } from './ml-learning'
+import type { AdvancedMLState } from './ml-advanced'
 
 /**
  * Generate a random seed phrase (12 or 24 words)
@@ -205,7 +206,9 @@ export async function batchScan(
   apiKey?: string,
   onProgress?: (current: number, total: number, found: number) => void,
   mlState?: MLState,
-  strategy?: GenerationStrategy
+  strategy?: GenerationStrategy,
+  advancedMLState?: AdvancedMLState,
+  useAdvancedML?: boolean
 ): Promise<{
   totalScanned: number
   totalFound: number
@@ -232,7 +235,18 @@ export async function batchScan(
   const actualStrategy = strategy || 'random'
   
   for (let i = 0; i < count; i++) {
-    const seedPhrase = await generateRandomSeedPhrase(wordCount, mlState, actualStrategy)
+    // Generate seed phrase - use advanced ML if available and enabled
+    let seedPhrase: string
+    
+    if (useAdvancedML && advancedMLState && advancedMLState.bigrams.size > 0) {
+      // Use advanced N-gram generation
+      const mlAdvanced = await import('./ml-advanced')
+      seedPhrase = mlAdvanced.generateWithNGrams(advancedMLState, wordCount, 'adaptive')
+    } else {
+      // Use basic ML or random generation
+      seedPhrase = await generateRandomSeedPhrase(wordCount, mlState, actualStrategy)
+    }
+    
     const scanResult = await scanSeedPhrase(seedPhrase, walletType, useRealAPI, apiKey)
     
     // Check if any wallet has balance
