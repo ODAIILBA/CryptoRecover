@@ -14,10 +14,21 @@ A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudfl
 - **✅ Automated Wallet Scanner** 🔥 NEW!
   - Generate random BIP39 seed phrases (12 or 24 words)
   - Automatically derive wallet addresses (ETH & BTC)
-  - Check balances using blockchain APIs (simulated)
+  - **Check balances using real blockchain APIs** 🚀 NEW!
   - Real-time progress tracking with statistics
   - Display found wallets with full details
-  - Batch scanning up to 1000 wallets
+  - Batch scanning up to 1000 wallets (simulation) or 100 (real API)
+  - Toggle between simulation and real API modes
+
+- **✅ Real Blockchain API Integration** 🚀 NEW!
+  - **Etherscan API** for Ethereum wallet balance checking
+  - **Blockchain.com API** for Bitcoin wallet balance checking
+  - **CoinGecko API** for real-time crypto prices
+  - Rate limiting (5 req/sec) to respect API limits
+  - Automatic retry logic with exponential backoff
+  - Fallback to zero balance on API failures
+  - Health check endpoint for API status
+  - Supports custom API keys (optional for Etherscan)
 
 - **✅ BIP39 Seed Phrase Analysis**
   - Validate seed phrases (12 or 24 words)
@@ -49,18 +60,21 @@ A modern, secure cryptocurrency wallet recovery tool built with Hono and Cloudfl
   - `POST /api/seed-phrase/analyze` - Analyze seed phrase for errors
   - `GET /api/seed-phrase/suggestions` - Get word autocomplete suggestions
   - `POST /api/seed-phrase/validate` - Validate complete seed phrase
-  - `POST /api/wallet/generate` - Generate random seed phrases 🔥 NEW!
-  - `POST /api/wallet/test` - Test a single seed phrase 🔥 NEW!
-  - `POST /api/wallet/batch-scan` - Batch scan multiple wallets 🔥 NEW!
+  - `POST /api/wallet/generate` - Generate random seed phrases
+  - `POST /api/wallet/test` - Test a single seed phrase (supports real API)
+  - `POST /api/wallet/batch-scan` - Batch scan multiple wallets (supports real API)
+  - `GET /api/blockchain/health` - Check blockchain API health 🚀 NEW!
+  - `GET /api/blockchain/prices` - Get real-time crypto prices 🚀 NEW!
   - `POST /api/scan/initiate` - Initiate wallet scan (demo mode)
   - `GET /api/scan/:scanId/status` - Get scan progress (demo mode)
 
 ### Not Yet Implemented
 
-- **⏳ Real Wallet Scanning**
-  - Integration with blockchain APIs (Etherscan, Blockchain.com)
+- **⏳ Advanced Features**
   - Background job processing for long scans
   - Progress tracking with WebSocket updates
+  - Database persistence for scan results
+  - User authentication and accounts
 
 - **⏳ LLM-Powered Analysis**
   - Cloudflare AI integration for advanced error detection
@@ -197,6 +211,30 @@ npm run clean-port    # Kill process on port 3000
 - Rate limiting (to be implemented)
 - CORS configuration for API security
 - Environment variables for sensitive configuration
+
+## 🔑 **Getting Blockchain API Keys**
+
+### Etherscan API (for Ethereum)
+1. Visit https://etherscan.io/apis
+2. Sign up for a free account
+3. Navigate to API Keys section
+4. Create a new API key
+5. **Free tier:** 5 requests/second, 100,000 requests/day
+
+### Blockchain.com API (for Bitcoin)
+- **No API key required!** ✅
+- Public API with rate limits
+- ~1-5 requests/second recommended
+
+### CoinGecko API (for crypto prices)
+- **No API key required!** ✅
+- Public API for price data
+- Rate limit: 10-50 requests/minute
+
+**Using API Keys:**
+- Add to scanner UI (checkbox to enable real API mode)
+- Or pass in API requests: `{"apiKey": "your-key", "useRealAPI": true}`
+- Keys are never stored or logged
 
 ## 🚀 Deployment to Cloudflare Pages
 
@@ -390,6 +428,60 @@ If wallets with balance are found:
   ]
 }
 ```
+
+### Check Blockchain API Health 🚀 NEW!
+
+**GET** `/api/blockchain/health`
+
+Response:
+```json
+{
+  "success": true,
+  "services": {
+    "etherscan": true,
+    "blockchain": true,
+    "coingecko": true
+  },
+  "allHealthy": true
+}
+```
+
+### Get Real-Time Crypto Prices 🚀 NEW!
+
+**GET** `/api/blockchain/prices`
+
+Response:
+```json
+{
+  "success": true,
+  "prices": {
+    "ETH": 2000.50,
+    "BTC": 45000.75
+  },
+  "timestamp": "2026-02-23T05:45:00.000Z"
+}
+```
+
+### Using Real API Mode 🚀
+
+To use real blockchain APIs instead of simulation:
+
+**POST** `/api/wallet/batch-scan`
+```json
+{
+  "count": 10,
+  "wordCount": 12,
+  "walletType": "both",
+  "useRealAPI": true,
+  "apiKey": "YOUR_ETHERSCAN_API_KEY"
+}
+```
+
+**Note:** 
+- Real API mode is limited to 100 wallets per batch
+- Etherscan API key is optional but recommended for ETH
+- Bitcoin checks work without an API key
+- Rate limiting is automatically applied (5 req/sec)
 
 ## 🎯 Roadmap
 
